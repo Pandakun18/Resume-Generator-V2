@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Résumé Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Playfair+Display:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#F0EDE3;min-height:100vh}
+input,textarea,button,select{font-family:inherit}
+.scroll::-webkit-scrollbar{width:8px;height:8px}
+.scroll::-webkit-scrollbar-track{background:transparent}
+.scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:4px}
+.scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.25)}
+.pdf-area{position:absolute;left:-99999px;top:0;width:8.5in;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ── DATA ── */
+const EMPTY = {name:"",photo:null,contact:{phone:"",email:"",location:"",linkedin:"",website:""},summary:{tagline:"",bullets:[],skills:[]},experience:[],education:[],certifications:[],projects:[],awards:[]};
+
+const SAMPLE = {
+  name:"Jordan Ellis",photo:null,
+  contact:{phone:"+1 (415) 882-4410",email:"jordan.ellis@email.com",location:"San Francisco, CA",linkedin:"linkedin.com/in/jordanellis",website:"jordanellis.design"},
+  summary:{
+    tagline:"Senior Product Designer with 9 years crafting intuitive digital experiences.",
+    bullets:["Led end-to-end design for products used by 4M+ users across mobile and web platforms.","Scaled design systems from 0 to 1 at two early-stage startups, reducing design-to-dev handoff time by 40%.","Deep collaborator with engineering and product — comfortable in high-velocity agile environments."],
+    skills:["Figma","Prototyping","User Research","Design Systems","Interaction Design","Usability Testing","Accessibility","React (basic)"]
+  },
+  experience:[
+    {title:"Senior Product Designer",company:"Lattice",location:"San Francisco, CA",start:"Mar 2021",end:"Present",summary:"Leading product design for the core HR platform across performance, engagement, and compensation modules.",bullets:["Redesigned the performance review flow, reducing completion time by 28% and increasing manager satisfaction scores from 62 to 81.","Established a company-wide Figma design system adopted by all 11 product teams.","Mentored 3 mid-level designers and ran weekly design critique sessions across the org."]},
+    {title:"Product Designer",company:"Notion",location:"San Francisco, CA",start:"Jun 2018",end:"Feb 2021",summary:"Contributed to the core editor and templates experience during a period of rapid 10× user growth.",bullets:["Designed the Notion template gallery — now the #1 onboarding path for new users.","Led accessibility audit and remediation, bringing WCAG AA compliance to 94% of core surfaces.","Improved activation rate by 19% through a redesigned onboarding funnel."]},
+    {title:"UX Designer",company:"IDEO",location:"San Francisco, CA",start:"Aug 2015",end:"May 2018",summary:"Human-centred design projects for clients in healthcare, fintech, and consumer technology.",bullets:["Facilitated 30+ discovery workshops and design sprints for Fortune 500 clients.","Delivered end-to-end design for a telehealth platform used by 180,000 patients."]}
+  ],
+  education:[{degree:"B.F.A. Interaction Design",school:"California College of the Arts",location:"San Francisco, CA",date:"2015",honors:"Graduated with Distinction · Senior thesis awarded Best in Show"}],
+  certifications:[{name:"Google UX Design Professional Certificate",org:"Google / Coursera",date:"2022"},{name:"CPACC — Certified Professional in Accessibility Core Competencies",org:"IAAP",date:"2021"}],
+  projects:[{name:"Pebble Icons — Open-Source Icon Library",description:"A free, MIT-licensed icon set with 1,200+ icons optimised for product UI. Used by teams at Vercel, Linear, and Loom.",bullets:["Built the full design pipeline in Figma with automated SVG exports via a custom Node.js script.","Reached 8,400 GitHub stars within 6 months of launch."]}],
+  awards:["Webby Award — Best UX, Mobile Apps (2023)","Fast Company Innovation By Design Finalist — Digital Design (2022)","Dribbble Top Shot of the Year — Product Design (2020)"]
+};
+
+/* ── FONTS ── */
+const INTER="\"Inter\",\"Helvetica Neue\",Helvetica,Arial,sans-serif";
+const OUTFIT="\"Outfit\",\"Inter\",\"Helvetica Neue\",Arial,sans-serif";
+const DM_SANS="\"DM Sans\",\"Inter\",\"Helvetica Neue\",Arial,sans-serif";
+const PLUS_J="\"Plus Jakarta Sans\",\"Inter\",Arial,sans-serif";
+const SORA="\"Sora\",\"Inter\",Arial,sans-serif";
+const FRAUNCES="\"Fraunces\",Georgia,\"Times New Roman\",serif";
+const LIBRE="\"Libre Baskerville\",Georgia,Cambria,serif";
+const PLAYFAIR="\"Playfair Display\",Georgia,\"Times New Roman\",serif";
+const MONO="\"JetBrains Mono\",\"IBM Plex Mono\",Menlo,Consolas,monospace";
+
+/* ── TEMPLATES ── */
+const TEMPLATES = {
+  'corporate-boardroom':{label:'Apex',blurb:'Dark header band with photo.',category:'corporate',accent:'#0F2744',nameFont:OUTFIT,bodyFont:INTER,layout:'dark-header',photoShape:'circle',sectionDeco:'left-bar'},
+  'corporate-partner':{label:'Meridian',blurb:'Split header: photo left, name right.',category:'corporate',accent:'#1B3A5C',nameFont:PLUS_J,bodyFont:PLUS_J,layout:'split-header',photoShape:'rounded-square',sectionDeco:'dot-line'},
+  'tech-builder':{label:'Stack',blurb:'Monospace accents, skill chips.',category:'tech',accent:'#0D47A1',nameFont:SORA,bodyFont:INTER,layout:'accent-strip',photoShape:'hexagon',sectionDeco:'mono-label'},
+  'tech-architect':{label:'Blueprint',blurb:'Dark sidebar with photo.',category:'tech',accent:'#162032',nameFont:SORA,bodyFont:INTER,layout:'dark-sidebar',photoShape:'circle',sectionDeco:'bracket'},
+  'creative-editorial':{label:'Verso',blurb:'Editorial asymmetry, oversized name.',category:'creative',accent:'#B84A2A',accent2:'#2A5C4E',nameFont:FRAUNCES,bodyFont:DM_SANS,layout:'editorial',photoShape:'organic',sectionDeco:'italic-rule'},
+  'creative-studio':{label:'Canvas',blurb:'Color sidebar, bold typography.',category:'creative',accent:'#5C1F6B',nameFont:PLAYFAIR,bodyFont:DM_SANS,layout:'color-sidebar',photoShape:'circle',sectionDeco:'soft-band'},
+  'healthcare-practitioner':{label:'Clarity',blurb:'Two-tone header, credential-forward.',category:'healthcare',accent:'#0E6B5E',nameFont:PLUS_J,bodyFont:PLUS_J,layout:'two-tone-header',photoShape:'circle',sectionDeco:'teal-rule'},
+  'healthcare-educator':{label:'Align',blurb:'Structured columns layout.',category:'healthcare',accent:'#1B5E6B',nameFont:DM_SANS,bodyFont:DM_SANS,layout:'structured-cols',photoShape:'rounded-square',sectionDeco:'pill-header'},
+  'academic-scholar':{label:'Folio',blurb:'Classical serif, modern proportions.',category:'academic',accent:'#6B1F35',nameFont:FRAUNCES,bodyFont:LIBRE,layout:'folio',photoShape:'circle',sectionDeco:'serif-rule'},
+  'academic-researcher':{label:'Thesis',blurb:'Dense CV, publication-ready.',category:'academic',accent:'#2C3E6B',nameFont:LIBRE,bodyFont:LIBRE,layout:'cv-dense',photoShape:'rounded-square',sectionDeco:'rule-number'},
+  'trades-operator':{label:'Forge',blurb:'High-contrast dark header, bold type.',category:'trades',accent:'#1A1A1A',accent2:'#E05C20',nameFont:OUTFIT,bodyFont:OUTFIT,layout:'dark-header',photoShape:'rounded-square',sectionDeco:'orange-bar',boldHeader:true},
+  'trades-foreman':{label:'Ironclad',blurb:'Diagonal accent band header.',category:'trades',accent:'#2B2B2B',accent2:'#D4500F',nameFont:OUTFIT,bodyFont:INTER,layout:'diagonal-band',photoShape:'circle',sectionDeco:'thick-rule'},
+  'modern-sidebar':{label:'Sidebar',blurb:'Accent sidebar, content right.',category:'modern',accent:'#1A3A4A',nameFont:INTER,bodyFont:INTER,layout:'sidebar-classic',photoShape:'circle',sectionDeco:'sidebar-rule'},
+  'modern-director':{label:'Director',blurb:'Full-width color header band.',category:'modern',accent:'#1A3A4A',nameFont:INTER,bodyFont:INTER,layout:'header-band',photoShape:'circle',sectionDeco:'small-caps-rule'},
+};
+
+const CATEGORIES=[
+  {id:'corporate',label:'Corporate',variants:['corporate-boardroom','corporate-partner']},
+  {id:'tech',label:'Tech',variants:['tech-builder','tech-architect']},
+  {id:'creative',label:'Creative',variants:['creative-editorial','creative-studio']},
+  {id:'healthcare',label:'Health/Edu',variants:['healthcare-practitioner','healthcare-educator']},
+  {id:'academic',label:'Academic',variants:['academic-scholar','academic-researcher']},
+  {id:'trades',label:'Trades',variants:['trades-operator','trades-foreman']},
+  {id:'modern',label:'Modern',variants:['modern-sidebar','modern-director']},
+];
+
+const PRESETS=[
+  {name:'Navy',value:'#0F2744'},{name:'Cobalt',value:'#0D47A1'},{name:'Teal',value:'#0E6B5E'},
+  {name:'Forest',value:'#1A4731'},{name:'Burgundy',value:'#6B1F35'},{name:'Plum',value:'#5C1F6B'},
+  {name:'Clay',value:'#B84A2A'},{name:'Slate',value:'#2C3E6B'},{name:'Charcoal',value:'#2B2B2B'},{name:'Black',value:'#1A1A1A'},
+];
+
+/* ── UTILS ── */
+function rgba(hex,a){const h=(hex||'#000').replace('#','');const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return `rgba(${r},${g},${b},${a})`}
+
+/* ── ICONS (inline SVG) ── */
+const Icon = ({d,size=16,stroke='currentColor'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d={d}/>
+  </svg>
+);
+const IcoDownload = () => <Icon d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>;
+const IcoFile = () => <Icon d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>;
+const IcoPlus = () => <Icon d="M12 5v14M5 12h14"/>;
+const IcoX = () => <Icon d="M18 6L6 18M6 6l12 12"/>;
+const IcoChevUp = () => <Icon d="M18 15l-6-6-6 6"/>;
+const IcoChevDown = () => <Icon d="M6 9l6 6 6-6"/>;
+const IcoEdit = () => <Icon d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>;
+const IcoRefresh = () => <Icon d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/>;
+const IcoCheck = () => <Icon d="M20 6L9 17l-5-5"/>;
+const IcoLock = () => <Icon d="M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4"/>;
+const IcoCamera = () => <Icon d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z"/>;
+const IcoUser = () => <Icon d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/>;
+const IcoLoader = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+  </svg>
+);
+
+/* ── PHOTO ── */
+function Photo({src,shape,size='1in',border}){
+  const dim={width:size,height:size,flexShrink:0};
+  if(!src) return (
+    <div style={{...dim,borderRadius:shape==='circle'?'50%':shape==='rounded-square'?'0.1in':'0',background:border?rgba(border,0.2):'#ddd',display:'flex',alignItems:'center',justifyContent:'center',border:border?`2px solid ${rgba(border,0.3)}`:'none'}}>
+      <div style={{color:border||'#aaa',opacity:0.4,fontSize:'0.28in'}}>◆</div>
+    </div>
+  );
+  if(shape==='hexagon') return (
+    <div style={{...dim,flexShrink:0,position:'relative'}}>
+      <svg viewBox="0 0 100 100" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}>
+        <defs><clipPath id="hc"><polygon points="50,2 93,25 93,75 50,98 7,75 7,25"/></clipPath></defs>
+        <image href={src} x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid slice" clipPath="url(#hc)"/>
+        <polygon points="50,2 93,25 93,75 50,98 7,75 7,25" fill="none" stroke={border||'rgba(255,255,255,0.3)'} strokeWidth="2"/>
+      </svg>
+    </div>
+  );
+  const radius=shape==='circle'?'50%':shape==='rounded-square'?'0.08in':shape==='organic'?'60% 40% 55% 45% / 45% 55% 40% 60%':'0';
+  return (
+    <div style={{...dim,borderRadius:radius,overflow:'hidden',border:border?`3px solid ${border}`:'none',flexShrink:0}}>
+      <img src={src} alt="Profile" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+    </div>
+  );
+}
+
+/* ── CONTACT HELPERS ── */
+function CLine({data,sep='  ·  ',style={}}){
+  const items=[data.contact?.location,data.contact?.phone,data.contact?.email,data.contact?.linkedin,data.contact?.website].filter(Boolean);
+  if(!items.length) return null;
+  return <div style={style}>{items.join(sep)}</div>;
+}
+function CStack({data,style={},lblStyle={}}){
+  const items=[{l:'Location',v:data.contact?.location},{l:'Phone',v:data.contact?.phone},{l:'Email',v:data.contact?.email},{l:'LinkedIn',v:data.contact?.linkedin},{l:'Website',v:data.contact?.website}].filter(x=>x.v);
+  return <div style={style}>{items.map((x,i)=>(
+    <div key={i} style={{marginBottom:'0.05in'}}>
+      {Object.keys(lblStyle).length>0&&<div style={lblStyle}>{x.l}</div>}
+      <div style={{wordBreak:'break-word'}}>{x.v}</div>
+    </div>
+  ))}</div>;
+}
+
+/* ── SECTION TITLE ── */
+function SecTitle({children,deco,accent,bodyFont,accent2}){
+  const base={fontFamily:bodyFont,letterSpacing:'0.15em',fontSize:'9pt',fontWeight:700,textTransform:'uppercase'};
+  const m='0.18in 0 0.08in 0';
+  if(deco==='left-bar') return <div style={{display:'flex',alignItems:'center',gap:'0.1in',margin:m}}><div style={{width:'3px',height:'0.18in',background:accent,borderRadius:'2px',flexShrink:0}}/><div style={{...base,color:accent}}>{children}</div></div>;
+  if(deco==='dot-line') return <div style={{display:'flex',alignItems:'center',gap:'0.08in',margin:m}}><div style={{width:'6px',height:'6px',borderRadius:'50%',background:accent,flexShrink:0}}/><div style={{...base,color:accent,flex:1}}>{children}</div><div style={{flex:1,height:'1px',background:rgba(accent,0.2)}}/></div>;
+  if(deco==='mono-label') return <div style={{margin:m,display:'flex',alignItems:'center',gap:'0.1in'}}><div style={{...base,fontFamily:MONO,color:accent,fontSize:'8pt'}}>{`// ${children}`}</div><div style={{flex:1,height:'1px',background:rgba(accent,0.18)}}/></div>;
+  if(deco==='bracket') return <div style={{margin:m}}><div style={{...base,color:accent,fontFamily:MONO,fontSize:'8.5pt'}}><span style={{opacity:0.5}}>{'{ '}</span>{children}<span style={{opacity:0.5}}>{' }'}</span></div><div style={{height:'1px',background:rgba(accent,0.15),marginTop:'0.04in'}}/></div>;
+  if(deco==='italic-rule') return <div style={{margin:'0.2in 0 0.08in 0',paddingBottom:'0.04in',borderBottom:`1px solid ${rgba(accent,0.35)}`}}><div style={{...base,fontStyle:'italic',fontWeight:400,letterSpacing:'0.12em',color:accent,fontSize:'10pt'}}>{children}</div></div>;
+  if(deco==='soft-band') return <div style={{background:rgba(accent,0.08),padding:'0.05in 0.1in',margin:'0.16in -0.1in 0.08in -0.1in',borderLeft:`3px solid ${accent}`}}><div style={{...base,color:accent}}>{children}</div></div>;
+  if(deco==='teal-rule') return <div style={{display:'flex',alignItems:'center',gap:'0.1in',margin:m}}><div style={{...base,color:accent,whiteSpace:'nowrap'}}>{children}</div><div style={{flex:1,height:'2px',background:`linear-gradient(to right, ${accent}, transparent)`}}/></div>;
+  if(deco==='pill-header') return <div style={{margin:m}}><span style={{...base,color:'#fff',background:accent,padding:'0.025in 0.12in',borderRadius:'50px',fontSize:'8pt'}}>{children}</span></div>;
+  if(deco==='serif-rule') return <div style={{margin:'0.2in 0 0.08in 0',paddingBottom:'0.04in',borderBottom:`1.5px solid ${accent}`}}><div style={{...base,fontFamily:FRAUNCES,textTransform:'none',fontSize:'11pt',fontWeight:600,letterSpacing:'0.02em',color:accent}}>{children}</div></div>;
+  if(deco==='rule-number') return <div style={{display:'flex',alignItems:'center',gap:'0.08in',margin:m}}><div style={{...base,color:accent}}>{children}</div><div style={{flex:1,height:'1px',background:rgba(accent,0.25)}}/></div>;
+  if(deco==='orange-bar') return <div style={{display:'flex',alignItems:'center',gap:'0.1in',margin:'0.16in 0 0.08in 0'}}><div style={{width:'0.18in',height:'2px',background:accent2||accent,flexShrink:0}}/><div style={{...base,color:'#fff',letterSpacing:'0.2em'}}>{children}</div></div>;
+  if(deco==='thick-rule') return <div style={{margin:'0.16in 0 0.08in 0',paddingBottom:'0.04in',borderBottom:`2.5px solid ${accent2||accent}`}}><div style={{...base,color:'#1c1c1c',letterSpacing:'0.2em'}}>{children}</div></div>;
+  if(deco==='sidebar-rule') return <div style={{margin:m,paddingBottom:'0.03in',borderBottom:`2px solid ${accent}`,...base,color:accent}}>{children}</div>;
+  if(deco==='small-caps-rule') return <div style={{margin:'0.2in 0 0.08in 0',paddingBottom:'0.03in',borderBottom:`1px solid ${accent}`,...base,color:accent}}>{children}</div>;
+  return <div style={{...base,color:accent,margin:m,paddingBottom:'0.03in',borderBottom:`1px solid ${rgba(accent,0.3)}`}}>{children}</div>;
+}
+
+/* ── EXPERIENCE / EDUCATION BLOCKS ── */
+function ExpBlock({exp,bodyFont,accent,i,total,dark}){
+  const tc=dark?'rgba(255,255,255,0.92)':'#111';
+  const sc=dark?'rgba(255,255,255,0.65)':'#444';
+  const bc=dark?'rgba(255,255,255,0.85)':'#1c1c1c';
+  return (
+    <div style={{marginBottom:i===total-1?0:'0.15in'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:'0.2in'}}>
+        <div style={{fontFamily:bodyFont,fontWeight:700,color:tc,fontSize:'10.5pt'}}>
+          {exp.title}{exp.company&&<span style={{fontWeight:400,color:sc}}>{' — '}{exp.company}</span>}{exp.location&&<span style={{fontWeight:400,color:sc,fontSize:'9.5pt'}}>{', '}{exp.location}</span>}
+        </div>
+        <div style={{fontFamily:bodyFont,color:sc,whiteSpace:'nowrap',fontSize:'9.5pt',flexShrink:0}}>{[exp.start,exp.end].filter(Boolean).join(' – ')}</div>
+      </div>
+      {exp.summary&&<div style={{fontFamily:bodyFont,color:sc,margin:'0.03in 0',fontSize:'10pt',fontStyle:'italic'}}>{exp.summary}</div>}
+      {exp.bullets?.length>0&&<ul style={{margin:'0.03in 0 0',paddingLeft:'0.2in'}}>{exp.bullets.map((b,j)=><li key={j} style={{marginBottom:'0.02in',fontFamily:bodyFont,fontSize:'10pt',color:bc}}>{b}</li>)}</ul>}
+    </div>
+  );
+}
+function EduBlock({ed,bodyFont,accent,dark}){
+  const tc=dark?'rgba(255,255,255,0.92)':'#111';
+  const sc=dark?'rgba(255,255,255,0.65)':'#444';
+  return (
+    <div style={{marginBottom:'0.1in'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:'0.2in'}}>
+        <div style={{fontFamily:bodyFont,fontWeight:600,color:tc,fontSize:'10.5pt'}}>
+          {ed.degree}{ed.school&&<span style={{fontWeight:400,color:sc}}>{' — '}{ed.school}</span>}{ed.location&&<span style={{fontWeight:400,color:sc,fontSize:'9.5pt'}}>{', '}{ed.location}</span>}
+        </div>
+        <div style={{fontFamily:bodyFont,color:sc,whiteSpace:'nowrap',fontSize:'9.5pt',flexShrink:0}}>{ed.date}</div>
+      </div>
+      {ed.honors&&<div style={{fontFamily:bodyFont,fontStyle:'italic',color:sc,marginTop:'0.02in',fontSize:'9.5pt'}}>{ed.honors}</div>}
+    </div>
+  );
+}
+
+/* ── SHARED BODY SECTIONS ── */
+function BodySections({data,template,accent,accent2,pad='0.4in 0.65in 0.6in'}){
+  const{bodyFont,sectionDeco}=template;
+  const s=data.summary||{};
+  const a2=accent2||template.accent2;
+  return (
+    <div style={{padding:pad,boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div>
+        <SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Summary</SecTitle>
+        {s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.04in',paddingLeft:'0.14in',borderLeft:`2px solid ${rgba(accent,0.2)}`}}>{b}</div>)}
+        {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.05in',marginTop:'0.06in'}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',background:rgba(accent,0.08),color:accent,padding:'0.02in 0.1in',borderRadius:'3px',fontWeight:600,border:`1px solid ${rgba(accent,0.2)}`}}>{sk}</span>)}</div>}
+      </div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Projects</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.1in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0'}}>{p.description}</div>}{p.bullets?.length>0&&<ul style={{margin:'0.02in 0 0',paddingLeft:'0.2in'}}>{p.bullets.map((b,j)=><li key={j} style={{fontFamily:bodyFont,fontSize:'10pt'}}>{b}</li>)}</ul>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Awards &amp; Honors</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  );
+}
+
+/* ── LAYOUTS ── */
+const pageBase={width:'8.5in',minHeight:'11in',boxSizing:'border-box',boxShadow:'0 12px 40px -10px rgba(0,0,0,0.18)'};
+
+function LayoutDarkHeader({data,template,accent,accent2}){
+  const{bodyFont,nameFont,photoShape,boldHeader}=template;
+  const s=data.summary||{};const a2=accent2||template.accent2;
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont}}>
+    <div style={{background:accent,padding:'0.42in 0.65in',boxSizing:'border-box',position:'relative',overflow:'hidden'}}>
+      <div style={{position:'absolute',top:0,right:0,width:'2.5in',height:'100%',background:'rgba(255,255,255,0.04)',clipPath:'polygon(30% 0, 100% 0, 100% 100%, 0% 100%)'}}/>
+      {a2&&<div style={{position:'absolute',bottom:0,left:0,right:0,height:'3px',background:a2}}/>}
+      <div style={{display:'flex',alignItems:'center',gap:'0.3in',position:'relative'}}>
+        <Photo src={data.photo} shape={photoShape} size="1.05in" border="rgba(255,255,255,0.3)"/>
+        <div style={{flex:1}}>
+          <h1 style={{fontFamily:nameFont,fontSize:boldHeader?'30pt':'28pt',fontWeight:800,color:'#fff',margin:0,lineHeight:1.1,letterSpacing:boldHeader?'0.06em':'-0.01em',textTransform:boldHeader?'uppercase':'none'}}>{data.name||'Your Name'}</h1>
+          {s.tagline&&<div style={{color:'rgba(255,255,255,0.7)',fontSize:'10pt',marginTop:'0.07in',fontStyle:'italic',fontFamily:bodyFont}}>{s.tagline}</div>}
+          <CLine data={data} sep="  ·  " style={{color:'rgba(255,255,255,0.72)',fontSize:'8.5pt',marginTop:'0.1in',fontFamily:bodyFont}}/>
+        </div>
+      </div>
+    </div>
+    <BodySections data={data} template={template} accent={accent} accent2={accent2}/>
+  </div>;
+}
+
+function LayoutSplitHeader({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont}}>
+    <div style={{display:'flex',borderBottom:`3px solid ${accent}`}}>
+      <div style={{width:'2.5in',background:accent,padding:'0.4in 0.3in',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'0.15in',flexShrink:0}}>
+        <Photo src={data.photo} shape={photoShape} size="1.1in" border="rgba(255,255,255,0.4)"/>
+        <CStack data={data} style={{fontSize:'8pt',color:'rgba(255,255,255,0.82)',lineHeight:1.55,textAlign:'center',fontFamily:bodyFont}} lblStyle={{fontSize:'6.5pt',textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.45)',marginBottom:'1px'}}/>
+      </div>
+      <div style={{flex:1,padding:'0.4in 0.5in',display:'flex',flexDirection:'column',justifyContent:'center'}}>
+        <h1 style={{fontFamily:nameFont,fontSize:'28pt',fontWeight:800,color:accent,margin:0,lineHeight:1.1}}>{data.name||'Your Name'}</h1>
+        {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#555',marginTop:'0.08in',fontStyle:'italic'}}>{s.tagline}</div>}
+        {s.bullets?.length>0&&<ul style={{margin:'0.1in 0 0',paddingLeft:'0.18in'}}>{s.bullets.map((b,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#333',marginBottom:'0.03in'}}>{b}</li>)}</ul>}
+        {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.05in',marginTop:'0.1in'}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',background:rgba(accent,0.08),color:accent,padding:'0.025in 0.1in',borderRadius:'50px',fontWeight:600}}>{sk}</span>)}</div>}
+      </div>
+    </div>
+    <div style={{padding:'0.35in 0.55in 0.6in',boxSizing:'border-box'}}>
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Projects</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.1in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0'}}>{p.description}</div>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutAccentStrip({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont,display:'flex'}}>
+    <div style={{width:'0.18in',background:accent,flexShrink:0}}/>
+    <div style={{flex:1,padding:'0.55in 0.55in 0.6in 0.45in',boxSizing:'border-box'}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:'0.3in',marginBottom:'0.2in'}}>
+        <div style={{flex:1}}>
+          <h1 style={{fontFamily:nameFont,fontSize:'28pt',fontWeight:700,color:'#0d0d0d',margin:0,lineHeight:1.1}}>{data.name||'Your Name'}</h1>
+          {s.tagline&&<div style={{fontFamily:MONO,fontSize:'8.5pt',color:accent,marginTop:'0.07in'}}>{s.tagline}</div>}
+          <CLine data={data} sep="  |  " style={{fontFamily:MONO,fontSize:'7.5pt',color:'#555',marginTop:'0.08in'}}/>
+        </div>
+        <Photo src={data.photo} shape={photoShape} size="1in" border={rgba(accent,0.4)}/>
+      </div>
+      {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.05in',padding:'0.1in 0.12in',background:rgba(accent,0.05),borderRadius:'4px',marginBottom:'0.05in',border:`1px solid ${rgba(accent,0.12)}`}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:MONO,fontSize:'8pt',color:accent,fontWeight:500}}>{sk}{i<s.skills.length-1?<span style={{opacity:0.4,marginLeft:'0.06in'}}>·</span>:''}</span>)}</div>}
+      {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>{s.bullets.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.04in'}}>{b}</div>)}</div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutDarkSidebar({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  const sdStyle={marginTop:'0.18in',borderTop:'1px solid rgba(255,255,255,0.15)',paddingTop:'0.15in'};
+  const sdLabel={fontFamily:bodyFont,fontSize:'7pt',textTransform:'uppercase',letterSpacing:'0.18em',color:'rgba(255,255,255,0.45)',marginBottom:'0.08in'};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont,display:'flex'}}>
+    <div style={{width:'2.35in',background:accent,padding:'0.5in 0.3in 0.5in 0.35in',boxSizing:'border-box',flexShrink:0}}>
+      <Photo src={data.photo} shape={photoShape} size="1.05in" border="rgba(255,255,255,0.25)"/>
+      <div style={{marginTop:'0.18in',fontFamily:nameFont,fontSize:'16pt',fontWeight:700,color:'#fff',lineHeight:1.2,wordBreak:'break-word'}}>{data.name||'Your Name'}</div>
+      {s.tagline&&<div style={{fontFamily:MONO,fontSize:'7.5pt',color:'rgba(255,255,255,0.6)',marginTop:'0.08in',lineHeight:1.4}}>{s.tagline}</div>}
+      <div style={sdStyle}><div style={sdLabel}>Contact</div><CStack data={data} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.82)',lineHeight:1.5}} lblStyle={{fontSize:'6.5pt',textTransform:'uppercase',letterSpacing:'0.1em',color:'rgba(255,255,255,0.4)'}}/></div>
+      {s.skills?.length>0&&<div style={sdStyle}><div style={sdLabel}>Skills</div>{s.skills.map((sk,i)=><div key={i} style={{fontFamily:MONO,fontSize:'8pt',color:'rgba(255,255,255,0.85)',marginBottom:'0.04in',paddingLeft:'0.1in',borderLeft:'2px solid rgba(255,255,255,0.2)'}}>{sk}</div>)}</div>}
+      {data.certifications?.length>0&&<div style={sdStyle}><div style={sdLabel}>Certifications</div>{data.certifications.map((c,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.82)',marginBottom:'0.07in'}}><div style={{fontWeight:600}}>{c.name}</div>{c.org&&<div style={{color:'rgba(255,255,255,0.55)'}}>{c.org}</div>}{c.date&&<div style={{color:'rgba(255,255,255,0.45)'}}>{c.date}</div>}</div>)}</div>}
+      {data.education?.length>0&&<div style={sdStyle}><div style={sdLabel}>Education</div>{data.education.map((e,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.82)',marginBottom:'0.08in'}}><div style={{fontWeight:600}}>{e.degree}</div>{e.school&&<div style={{color:'rgba(255,255,255,0.65)'}}>{e.school}</div>}{e.date&&<div style={{color:'rgba(255,255,255,0.45)'}}>{e.date}</div>}</div>)}</div>}
+    </div>
+    <div style={{flex:1,padding:'0.5in 0.5in 0.6in 0.4in',boxSizing:'border-box'}}>
+      {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>{s.bullets.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.04in'}}>{b}</div>)}</div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Projects</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.1in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0'}}>{p.description}</div>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutEditorial({data,template,accent,accent2}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};const a2=accent2||template.accent2;
+  return <div style={{...pageBase,background:'#FEFEFE',fontFamily:bodyFont}}>
+    <div style={{padding:'0.55in 0.7in 0.3in',boxSizing:'border-box',borderBottom:`1px solid ${rgba(accent,0.15)}`}}>
+      <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:'0.3in'}}>
+        <div style={{flex:1}}>
+          <h1 style={{fontFamily:nameFont,fontSize:'40pt',fontWeight:700,color:'#111',margin:0,lineHeight:1.0,letterSpacing:'-0.02em'}}>{data.name||'Your Name'}</h1>
+          {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'10.5pt',color:accent,marginTop:'0.08in',fontStyle:'italic'}}>{s.tagline}</div>}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'0.1in'}}>
+          <Photo src={data.photo} shape={photoShape} size="1.1in" border={rgba(accent,0.3)}/>
+          <CLine data={data} sep=" · " style={{fontFamily:bodyFont,fontSize:'8pt',color:'#666',textAlign:'right',maxWidth:'2.5in',lineHeight:1.6}}/>
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:'0.1in',marginTop:'0.2in'}}>
+        <div style={{width:'0.4in',height:'3px',background:accent}}/>
+        <div style={{flex:1,height:'1px',background:rgba(accent,0.15)}}/>
+        {a2&&<div style={{width:'0.15in',height:'3px',background:a2}}/>}
+      </div>
+    </div>
+    <div style={{padding:'0.3in 0.7in 0.6in',boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div>
+        <SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>
+        {s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.04in',fontStyle:'italic'}}>{b}</div>)}
+        {s.skills?.length>0&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',marginTop:'0.06in'}}>{s.skills.join('  ·  ')}</div>}
+      </div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutColorSidebar({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  const sdStyle={marginTop:'0.2in',borderTop:'1px solid rgba(255,255,255,0.18)',paddingTop:'0.18in'};
+  const sdLabel={fontFamily:bodyFont,fontSize:'7pt',textTransform:'uppercase',letterSpacing:'0.2em',color:'rgba(255,255,255,0.45)',marginBottom:'0.1in'};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont,display:'flex'}}>
+    <div style={{width:'2.6in',background:accent,padding:'0.5in 0.32in',boxSizing:'border-box',flexShrink:0}}>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:'0.2in'}}><Photo src={data.photo} shape={photoShape} size="1.15in" border="rgba(255,255,255,0.35)"/></div>
+      <h1 style={{fontFamily:nameFont,fontSize:'18pt',fontWeight:600,color:'#fff',margin:0,lineHeight:1.2,textAlign:'center'}}>{data.name||'Your Name'}</h1>
+      {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'rgba(255,255,255,0.7)',marginTop:'0.08in',fontStyle:'italic',textAlign:'center',lineHeight:1.4}}>{s.tagline}</div>}
+      <div style={sdStyle}><div style={sdLabel}>Contact</div><CStack data={data} style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'rgba(255,255,255,0.85)',lineHeight:1.55}} lblStyle={{}}/></div>
+      {s.skills?.length>0&&<div style={sdStyle}><div style={sdLabel}>Skills</div><div style={{display:'flex',flexWrap:'wrap',gap:'0.05in'}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:bodyFont,fontSize:'8pt',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.9)',padding:'0.03in 0.09in',borderRadius:'3px',fontWeight:500}}>{sk}</span>)}</div></div>}
+      {data.certifications?.length>0&&<div style={sdStyle}><div style={sdLabel}>Certifications</div>{data.certifications.map((c,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.85)',marginBottom:'0.07in'}}><div style={{fontWeight:600}}>{c.name}</div>{c.org&&<div style={{color:'rgba(255,255,255,0.6)'}}>{c.org}</div>}{c.date&&<div style={{color:'rgba(255,255,255,0.45)'}}>{c.date}</div>}</div>)}</div>}
+      {data.education?.length>0&&<div style={sdStyle}><div style={sdLabel}>Education</div>{data.education.map((e,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.85)',marginBottom:'0.08in'}}><div style={{fontWeight:600}}>{e.degree}</div>{e.school&&<div style={{color:'rgba(255,255,255,0.65)'}}>{e.school}</div>}{e.date&&<div style={{color:'rgba(255,255,255,0.45)'}}>{e.date}</div>}</div>)}</div>}
+    </div>
+    <div style={{flex:1,padding:'0.5in 0.5in 0.6in 0.4in',boxSizing:'border-box'}}>
+      {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Profile</SecTitle>{s.bullets.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.04in',lineHeight:1.55}}>{b}</div>)}</div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Projects</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.1in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0'}}>{p.description}</div>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutTwoToneHeader({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont}}>
+    <div style={{display:'flex',height:'1.6in'}}>
+      <div style={{background:accent,flex:'0 0 2.8in',display:'flex',alignItems:'center',justifyContent:'center'}}><Photo src={data.photo} shape={photoShape} size="1.1in" border="rgba(255,255,255,0.35)"/></div>
+      <div style={{flex:1,background:rgba(accent,0.06),padding:'0.3in 0.5in',display:'flex',flexDirection:'column',justifyContent:'center',borderBottom:`3px solid ${accent}`}}>
+        <h1 style={{fontFamily:nameFont,fontSize:'24pt',fontWeight:700,color:accent,margin:0,lineHeight:1.1}}>{data.name||'Your Name'}</h1>
+        {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#555',marginTop:'0.07in',fontStyle:'italic'}}>{s.tagline}</div>}
+        <CLine data={data} sep="  ·  " style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'#666',marginTop:'0.08in'}}/>
+      </div>
+    </div>
+    <div style={{padding:'0.38in 0.6in 0.6in',boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div>
+        <SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>
+        {s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.04in'}}>{b}</div>)}
+        {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.05in',marginTop:'0.06in'}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',background:rgba(accent,0.08),color:accent,padding:'0.025in 0.1in',borderRadius:'50px',fontWeight:600}}>{sk}</span>)}</div>}
+      </div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications &amp; Licenses</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.04in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutStructuredCols({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont}}>
+    <div style={{padding:'0.5in 0.65in 0.3in',boxSizing:'border-box',background:'#fff',borderBottom:`2px solid ${rgba(accent,0.12)}`}}>
+      <div style={{display:'flex',alignItems:'center',gap:'0.3in'}}>
+        <Photo src={data.photo} shape={photoShape} size="1in" border={rgba(accent,0.3)}/>
+        <div style={{flex:1}}>
+          <h1 style={{fontFamily:nameFont,fontSize:'26pt',fontWeight:700,color:'#111',margin:0,lineHeight:1.1}}>{data.name||'Your Name'}</h1>
+          {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'10.5pt',color:accent,marginTop:'0.06in',fontWeight:500}}>{s.tagline}</div>}
+          <CLine data={data} sep="  |  " style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'#666',marginTop:'0.09in'}}/>
+        </div>
+      </div>
+    </div>
+    <div style={{display:'flex',padding:'0.35in 0.65in 0.6in',gap:'0.4in',boxSizing:'border-box'}}>
+      <div style={{width:'2.1in',flexShrink:0}}>
+        {s.skills?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Skills</SecTitle>{s.skills.map((sk,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'9pt',color:'#333',marginBottom:'0.04in',paddingLeft:'0.08in',borderLeft:`2px solid ${rgba(accent,0.3)}`}}>{sk}</div>)}</div>}
+        {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Credentials</SecTitle>{data.certifications.map((c,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'#333',marginBottom:'0.08in'}}><div style={{fontWeight:600,fontSize:'9pt'}}>{c.name}</div>{c.org&&<div style={{color:'#666'}}>{c.org}</div>}{c.date&&<div style={{color:accent,fontWeight:500}}>{c.date}</div>}</div>)}</div>}
+        {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'#333',marginBottom:'0.1in'}}><div style={{fontWeight:600,fontSize:'9pt'}}>{e.degree}</div>{e.school&&<div>{e.school}</div>}{e.date&&<div style={{color:accent,fontWeight:500}}>{e.date}</div>}</div>)}</div>}
+      </div>
+      <div style={{flex:1}}>
+        {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>{s.bullets.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.05in'}}>{b}</div>)}</div>}
+        {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      </div>
+    </div>
+  </div>;
+}
+
+function LayoutFolio({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FEFDF9',fontFamily:bodyFont}}>
+    <div style={{padding:'0.6in 0.75in 0.35in',boxSizing:'border-box',textAlign:'center',position:'relative',borderBottom:`1px solid ${rgba(accent,0.2)}`}}>
+      <div style={{position:'absolute',top:'0.5in',right:'0.7in'}}><Photo src={data.photo} shape={photoShape} size="1in" border={rgba(accent,0.3)}/></div>
+      <h1 style={{fontFamily:nameFont,fontSize:'32pt',fontWeight:700,color:'#111',margin:0,lineHeight:1.1}}>{data.name||'Your Name'}</h1>
+      {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'11pt',color:'#555',marginTop:'0.09in',fontStyle:'italic'}}>{s.tagline}</div>}
+      <CLine data={data} sep="  ·  " style={{fontFamily:bodyFont,fontSize:'9pt',color:'#666',marginTop:'0.12in'}}/>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'0.12in',marginTop:'0.2in'}}>
+        <div style={{width:'0.6in',height:'1px',background:rgba(accent,0.3)}}/>
+        <div style={{width:'6px',height:'6px',background:accent,transform:'rotate(45deg)'}}/>
+        <div style={{width:'0.6in',height:'1px',background:rgba(accent,0.3)}}/>
+      </div>
+    </div>
+    <div style={{padding:'0.35in 0.75in 0.6in',boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Research Interests</SecTitle>{s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.04in',lineHeight:1.6}}>{b}</div>)}{s.skills?.length>0&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#555',marginTop:'0.06in',fontStyle:'italic'}}>{s.skills.join('  ·  ')}</div>}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#1c1c1c',marginBottom:'0.04in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Honors &amp; Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',marginBottom:'0.04in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutCvDense({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  const colStyle={marginTop:'0.18in',borderTop:`1px solid ${rgba(accent,0.2)}`,paddingTop:'0.15in'};
+  const colLabel={fontFamily:bodyFont,fontSize:'7pt',textTransform:'uppercase',letterSpacing:'0.15em',color:accent,fontWeight:700,marginBottom:'0.08in'};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont,display:'flex'}}>
+    <div style={{width:'2.1in',background:rgba(accent,0.05),borderRight:`2px solid ${rgba(accent,0.12)}`,padding:'0.5in 0.28in',boxSizing:'border-box',flexShrink:0}}>
+      <Photo src={data.photo} shape={photoShape} size="0.95in" border={rgba(accent,0.3)}/>
+      <div style={{marginTop:'0.15in',fontFamily:nameFont,fontSize:'13pt',fontWeight:700,color:'#111',lineHeight:1.2,wordBreak:'break-word'}}>{data.name||'Your Name'}</div>
+      {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'8pt',color:'#666',marginTop:'0.07in',fontStyle:'italic',lineHeight:1.4}}>{s.tagline}</div>}
+      <div style={colStyle}><CStack data={data} style={{fontFamily:bodyFont,fontSize:'8pt',color:'#444',lineHeight:1.5}} lblStyle={{fontSize:'7pt',textTransform:'uppercase',letterSpacing:'0.1em',color:'#999'}}/></div>
+      {s.skills?.length>0&&<div style={colStyle}><div style={colLabel}>Expertise</div>{s.skills.map((sk,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'#333',marginBottom:'0.04in'}}>{sk}</div>)}</div>}
+      {data.education?.length>0&&<div style={colStyle}><div style={colLabel}>Education</div>{data.education.map((e,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'#333',marginBottom:'0.1in'}}><div style={{fontWeight:600}}>{e.degree}</div>{e.school&&<div style={{color:'#555'}}>{e.school}</div>}{e.date&&<div style={{color:accent,fontWeight:500}}>{e.date}</div>}</div>)}</div>}
+    </div>
+    <div style={{flex:1,padding:'0.5in 0.5in 0.6in 0.38in',boxSizing:'border-box'}}>
+      {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Research Profile</SecTitle>{s.bullets.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.05in',lineHeight:1.6}}>{b}</div>)}</div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length} density="compact"/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Projects &amp; Publications</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.09in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0',fontStyle:'italic'}}>{p.description}</div>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Honors &amp; Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutDiagonalBand({data,template,accent,accent2}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const a2=accent2||template.accent2;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#F8F8F8',fontFamily:bodyFont}}>
+    <div style={{position:'relative',overflow:'hidden',height:'1.8in',background:accent}}>
+      <div style={{position:'absolute',top:0,right:0,width:'40%',height:'100%',background:a2||'#555',clipPath:'polygon(20% 0, 100% 0, 100% 100%, 0% 100%)'}}/>
+      <div style={{position:'absolute',bottom:0,left:0,right:0,height:'4px',background:a2||'#555'}}/>
+      <div style={{position:'relative',display:'flex',alignItems:'center',gap:'0.3in',padding:'0.3in 0.65in',height:'100%',boxSizing:'border-box'}}>
+        <Photo src={data.photo} shape={photoShape} size="1.1in" border="rgba(255,255,255,0.35)"/>
+        <div>
+          <h1 style={{fontFamily:nameFont,fontSize:'28pt',fontWeight:800,color:'#fff',margin:0,lineHeight:1.0,letterSpacing:'0.04em',textTransform:'uppercase'}}>{data.name||'Your Name'}</h1>
+          {s.tagline&&<div style={{fontFamily:bodyFont,fontSize:'9.5pt',color:'rgba(255,255,255,0.72)',marginTop:'0.07in'}}>{s.tagline}</div>}
+          <CLine data={data} sep="  ·  " style={{fontFamily:bodyFont,fontSize:'8.5pt',color:'rgba(255,255,255,0.68)',marginTop:'0.07in'}}/>
+        </div>
+      </div>
+    </div>
+    <div style={{padding:'0.38in 0.65in 0.6in',boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div>
+        <SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Summary</SecTitle>
+        {s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#1c1c1c',marginBottom:'0.04in'}}>{b}</div>)}
+        {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.05in',marginTop:'0.06in'}}>{s.skills.map((sk,i)=><span key={i} style={{fontFamily:bodyFont,fontSize:'8.5pt',background:rgba(accent,0.08),color:accent,padding:'0.025in 0.1in',borderRadius:'3px',fontWeight:600}}>{sk}</span>)}</div>}
+      </div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Certifications &amp; Licenses</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#1c1c1c',marginBottom:'0.04in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#666'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont} accent2={a2}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutSidebarClassic({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  const sdStyle={marginTop:'0.18in',borderTop:'1px solid rgba(255,255,255,0.2)',paddingTop:'0.15in'};
+  const sdLabel={fontSize:'7pt',textTransform:'uppercase',letterSpacing:'0.18em',color:'rgba(255,255,255,0.45)',marginBottom:'0.08in'};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont,display:'flex'}}>
+    <div style={{width:'2.45in',background:accent,padding:'0.55in 0.3in',boxSizing:'border-box',flexShrink:0}}>
+      <div style={{display:'flex',justifyContent:'center',marginBottom:'0.18in'}}><Photo src={data.photo} shape={photoShape} size="1.05in" border="rgba(255,255,255,0.3)"/></div>
+      <div style={{fontFamily:nameFont,fontSize:'18pt',fontWeight:800,color:'#fff',lineHeight:1.15,marginBottom:'0.06in',letterSpacing:'-0.01em',wordBreak:'break-word'}}>{data.name||'Your Name'}</div>
+      {s.tagline&&<div style={{fontSize:'8.5pt',color:'rgba(255,255,255,0.72)',marginBottom:'0.22in',lineHeight:1.45,fontStyle:'italic',fontFamily:bodyFont}}>{s.tagline}</div>}
+      <div style={sdStyle}><div style={sdLabel}>Contact</div><CStack data={data} style={{fontSize:'8.5pt',color:'rgba(255,255,255,0.88)',lineHeight:1.55,fontFamily:bodyFont}} lblStyle={{fontSize:'7.5pt',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.1em'}}/></div>
+      {s.skills?.length>0&&<div style={sdStyle}><div style={sdLabel}>Skills</div>{s.skills.map((sk,i)=><div key={i} style={{fontSize:'8.5pt',color:'rgba(255,255,255,0.88)',marginBottom:'0.025in',display:'flex',alignItems:'center',gap:'0.06in',fontFamily:bodyFont}}><span style={{width:'4px',height:'4px',borderRadius:'50%',background:'rgba(255,255,255,0.5)',flexShrink:0,display:'inline-block'}}/>{sk}</div>)}</div>}
+      {data.certifications?.length>0&&<div style={sdStyle}><div style={sdLabel}>Certifications</div>{data.certifications.map((c,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.88)',marginBottom:'0.07in'}}><div style={{fontWeight:600}}>{c.name}</div>{c.org&&<div style={{color:'rgba(255,255,255,0.6)'}}>{c.org}</div>}{c.date&&<div style={{color:'rgba(255,255,255,0.5)'}}>{c.date}</div>}</div>)}</div>}
+      {data.education?.length>0&&<div style={sdStyle}><div style={sdLabel}>Education</div>{data.education.map((e,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'8pt',color:'rgba(255,255,255,0.88)',marginBottom:'0.08in'}}><div style={{fontWeight:600}}>{e.degree}</div>{e.school&&<div style={{color:'rgba(255,255,255,0.7)'}}>{e.school}</div>}{e.date&&<div style={{color:'rgba(255,255,255,0.55)'}}>{e.date}</div>}</div>)}</div>}
+    </div>
+    <div style={{flex:1,padding:'0.55in 0.45in 0.55in 0.4in',boxSizing:'border-box'}}>
+      {s.bullets?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{s.bullets.map((b,i)=><li key={i} style={{marginBottom:'0.04in',fontSize:'10pt',color:'#1c1c1c',fontFamily:bodyFont}}>{b}</li>)}</ul></div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.projects?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Projects</SecTitle>{data.projects.map((p,i)=><div key={i} style={{marginBottom:'0.1in'}}><div style={{fontFamily:bodyFont,fontWeight:700,fontSize:'10.5pt'}}>{p.name}</div>{p.description&&<div style={{fontFamily:bodyFont,fontSize:'10pt',color:'#444',margin:'0.02in 0'}}>{p.description}</div>}</div>)}</div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards</SecTitle><ul style={{margin:0,paddingLeft:'0.2in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+function LayoutHeaderBand({data,template,accent}){
+  const{bodyFont,nameFont,photoShape,sectionDeco}=template;const s=data.summary||{};
+  return <div style={{...pageBase,background:'#FAFAFA',fontFamily:bodyFont}}>
+    <div style={{background:accent,padding:'0.42in 0.75in 0.38in',boxSizing:'border-box',display:'flex',alignItems:'center',gap:'0.3in'}}>
+      <Photo src={data.photo} shape={photoShape} size="1in" border="rgba(255,255,255,0.3)"/>
+      <div style={{flex:1,textAlign:'center'}}>
+        <div style={{fontFamily:nameFont,fontSize:'32pt',fontWeight:800,color:'#fff',letterSpacing:'-0.02em',lineHeight:1.1}}>{data.name||'Your Name'}</div>
+        <CLine data={data} sep="  ·  " style={{color:'rgba(255,255,255,0.75)',fontSize:'9pt',marginTop:'0.12in',fontFamily:bodyFont}}/>
+        {s.tagline&&<div style={{color:'rgba(255,255,255,0.65)',fontSize:'10pt',marginTop:'0.09in',fontStyle:'italic',fontFamily:bodyFont}}>{s.tagline}</div>}
+      </div>
+    </div>
+    <div style={{padding:'0.45in 0.75in 0.65in',boxSizing:'border-box'}}>
+      {(s.bullets?.length>0||s.skills?.length>0)&&<div>
+        <SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Summary</SecTitle>
+        {s.bullets?.map((b,i)=><div key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#333',marginBottom:'0.04in'}}>{b}</div>)}
+        {s.skills?.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:'0.06in',marginTop:'0.04in'}}>{s.skills.map((sk,i)=><span key={i} style={{border:`1.5px solid ${rgba(accent,0.35)}`,color:accent,padding:'0.02in 0.1in',borderRadius:'0.04in',fontSize:'9pt',fontWeight:500,fontFamily:bodyFont}}>{sk}</span>)}</div>}
+      </div>}
+      {data.experience?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Experience</SecTitle>{data.experience.map((e,i)=><ExpBlock key={i} exp={e} bodyFont={bodyFont} accent={accent} i={i} total={data.experience.length}/>)}</div>}
+      {data.education?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Education</SecTitle>{data.education.map((e,i)=><EduBlock key={i} ed={e} bodyFont={bodyFont} accent={accent}/>)}</div>}
+      {data.certifications?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Certifications &amp; Licenses</SecTitle><ul style={{margin:0,paddingLeft:'0.22in'}}>{data.certifications.map((c,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10.5pt',color:'#1c1c1c',marginBottom:'0.03in'}}><span style={{fontWeight:600}}>{c.name}</span>{c.org&&`, ${c.org}`}{c.date&&<span style={{color:'#555'}}> ({c.date})</span>}</li>)}</ul></div>}
+      {data.awards?.length>0&&<div><SecTitle deco={sectionDeco} accent={accent} bodyFont={bodyFont}>Awards &amp; Honors</SecTitle><ul style={{margin:0,paddingLeft:'0.22in'}}>{data.awards.map((a,i)=><li key={i} style={{fontFamily:bodyFont,fontSize:'10pt',marginBottom:'0.03in'}}>{a}</li>)}</ul></div>}
+    </div>
+  </div>;
+}
+
+/* ── TEMPLATE ROUTER ── */
+function TemplatePreview({templateId,data,accent,accent2,innerRef}){
+  const t=TEMPLATES[templateId];
+  const props={data,template:t,accent,accent2:accent2||t.accent2};
+  const el=(()=>{
+    switch(t.layout){
+      case 'dark-header': return <LayoutDarkHeader {...props}/>;
+      case 'split-header': return <LayoutSplitHeader {...props}/>;
+      case 'accent-strip': return <LayoutAccentStrip {...props}/>;
+      case 'dark-sidebar': return <LayoutDarkSidebar {...props}/>;
+      case 'editorial': return <LayoutEditorial {...props}/>;
+      case 'color-sidebar': return <LayoutColorSidebar {...props}/>;
+      case 'two-tone-header': return <LayoutTwoToneHeader {...props}/>;
+      case 'structured-cols': return <LayoutStructuredCols {...props}/>;
+      case 'folio': return <LayoutFolio {...props}/>;
+      case 'cv-dense': return <LayoutCvDense {...props}/>;
+      case 'diagonal-band': return <LayoutDiagonalBand {...props}/>;
+      case 'sidebar-classic': return <LayoutSidebarClassic {...props}/>;
+      case 'header-band': return <LayoutHeaderBand {...props}/>;
+      default: return <LayoutDarkHeader {...props}/>;
+    }
+  })();
+  return <div ref={innerRef}>{el}</div>;
+}
+
+/* ── PHOTO UPLOAD ── */
+function PhotoUpload({photo,onChange}){
+  const ref=useRef();
+  const handle=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>onChange(ev.target.result);r.readAsDataURL(f);};
+  return (
+    <div>
+      <div style={{fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.08em',color:'#888',marginBottom:'6px',fontWeight:600}}>Profile Photo</div>
+      <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+        <div style={{width:'52px',height:'52px',borderRadius:'50%',overflow:'hidden',border:'2px solid #e2e2e2',background:'#f5f5f5',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+          {photo?<img src={photo} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span style={{color:'#ccc'}}><IcoUser/></span>}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+          <button onClick={()=>ref.current?.click()} style={{background:'#1c1c1c',color:'#fff',border:'none',padding:'6px 12px',borderRadius:'5px',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'5px'}}>
+            <IcoCamera/> {photo?'Change photo':'Upload photo'}
+          </button>
+          {photo&&<button onClick={()=>onChange(null)} style={{background:'none',border:'none',color:'#999',fontSize:'12px',cursor:'pointer',textAlign:'left',padding:0}}>Remove photo</button>}
+        </div>
+        <input ref={ref} type="file" accept="image/*" style={{display:'none'}} onChange={handle}/>
+      </div>
+    </div>
+  );
+}
+
+/* ── FORM HELPERS ── */
+const fld={width:'100%',padding:'6px 10px',fontSize:'13px',border:'1px solid #d4d4d4',borderRadius:'5px',background:'#fff',outline:'none',fontFamily:'inherit',boxSizing:'border-box'};
+const lbl={display:'block',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.08em',color:'#888',marginBottom:'4px',fontWeight:600};
+
+function ListInput({label,items,onChange,placeholder}){
+  return (
+    <div>
+      <div style={lbl}>{label}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+        {items.map((v,i)=>(
+          <div key={i} style={{display:'flex',gap:'6px'}}>
+            <input style={fld} value={v} onChange={e=>onChange(items.map((x,j)=>j===i?e.target.value:x))} placeholder={placeholder}/>
+            <button onClick={()=>onChange(items.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',padding:'0 4px',flexShrink:0}}><IcoX/></button>
+          </div>
+        ))}
+        <button onClick={()=>onChange([...items,''])} style={{background:'none',border:'none',cursor:'pointer',color:'#888',fontSize:'12px',display:'flex',alignItems:'center',gap:'4px',padding:'2px 0'}}><IcoPlus/> Add</button>
+      </div>
+    </div>
+  );
+}
+
+function Collapsible({title,children,open:initOpen=true}){
+  const[open,setOpen]=useState(initOpen);
+  return (
+    <div style={{borderBottom:'1px solid #efefef'}}>
+      <button onClick={()=>setOpen(!open)} style={{width:'100%',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+        <span style={{fontSize:'13px',fontWeight:700,color:'#1c1c1c',letterSpacing:'0.02em'}}>{title}</span>
+        {open?<IcoChevUp/>:<IcoChevDown/>}
+      </button>
+      {open&&<div style={{paddingBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>{children}</div>}
+    </div>
+  );
+}
+
+function SubCard({children,onRemove,label}){
+  return (
+    <div style={{border:'1px solid #e8e8e8',borderRadius:'6px',padding:'12px',background:'#fafafa'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+        <span style={{fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.08em',color:'#999',fontWeight:600}}>{label}</span>
+        <button onClick={onRemove} style={{background:'none',border:'none',cursor:'pointer',color:'#ccc'}}><IcoX/></button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ResumeForm({data,setData}){
+  const upd=(path,val)=>setData(prev=>{const n=JSON.parse(JSON.stringify(prev));const p=path.split('.');let c=n;for(let i=0;i<p.length-1;i++)c=c[p[i]];c[p[p.length-1]]=val;return n;});
+  const updExp=(i,k,v)=>setData(p=>({...p,experience:p.experience.map((e,j)=>j===i?{...e,[k]:v}:e)}));
+  const updEdu=(i,k,v)=>setData(p=>({...p,education:p.education.map((e,j)=>j===i?{...e,[k]:v}:e)}));
+  const updCert=(i,k,v)=>setData(p=>({...p,certifications:p.certifications.map((e,j)=>j===i?{...e,[k]:v}:e)}));
+  const g2={display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'};
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'0'}}>
+      <Collapsible title="Identity & Contact">
+        <PhotoUpload photo={data.photo} onChange={v=>upd('photo',v)}/>
+        <div><div style={lbl}>Full name</div><input style={fld} value={data.name} onChange={e=>upd('name',e.target.value)} placeholder="Your name"/></div>
+        <div style={g2}>
+          <div><div style={lbl}>Phone</div><input style={fld} value={data.contact.phone} onChange={e=>upd('contact.phone',e.target.value)}/></div>
+          <div><div style={lbl}>Email</div><input style={fld} value={data.contact.email} onChange={e=>upd('contact.email',e.target.value)}/></div>
+          <div><div style={lbl}>Location</div><input style={fld} value={data.contact.location} onChange={e=>upd('contact.location',e.target.value)}/></div>
+          <div><div style={lbl}>LinkedIn</div><input style={fld} value={data.contact.linkedin} onChange={e=>upd('contact.linkedin',e.target.value)}/></div>
+          <div style={{gridColumn:'1/-1'}}><div style={lbl}>Website</div><input style={fld} value={data.contact.website} onChange={e=>upd('contact.website',e.target.value)}/></div>
+        </div>
+      </Collapsible>
+
+      <Collapsible title="Summary">
+        <div><div style={lbl}>Tagline</div><input style={fld} value={data.summary.tagline} onChange={e=>upd('summary.tagline',e.target.value)} placeholder="e.g. Senior Designer with 10+ years"/></div>
+        <ListInput label="Bullets" items={data.summary.bullets} onChange={v=>upd('summary.bullets',v)} placeholder="A summary point"/>
+        <ListInput label="Skills" items={data.summary.skills} onChange={v=>upd('summary.skills',v)} placeholder="A skill"/>
+      </Collapsible>
+
+      <Collapsible title="Experience">
+        {data.experience.map((exp,i)=>(
+          <SubCard key={i} label={`Role ${i+1}`} onRemove={()=>setData(p=>({...p,experience:p.experience.filter((_,j)=>j!==i)}))}>
+            <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+              <div style={g2}>
+                <input style={fld} placeholder="Title" value={exp.title} onChange={e=>updExp(i,'title',e.target.value)}/>
+                <input style={fld} placeholder="Company" value={exp.company} onChange={e=>updExp(i,'company',e.target.value)}/>
+                <input style={fld} placeholder="Location" value={exp.location} onChange={e=>updExp(i,'location',e.target.value)}/>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                  <input style={fld} placeholder="Start" value={exp.start} onChange={e=>updExp(i,'start',e.target.value)}/>
+                  <input style={fld} placeholder="End" value={exp.end} onChange={e=>updExp(i,'end',e.target.value)}/>
+                </div>
+              </div>
+              <textarea style={{...fld,resize:'vertical'}} rows={2} placeholder="Summary paragraph" value={exp.summary} onChange={e=>updExp(i,'summary',e.target.value)}/>
+              <ListInput label="Bullets" items={exp.bullets} onChange={v=>updExp(i,'bullets',v)} placeholder="Bullet point"/>
+            </div>
+          </SubCard>
+        ))}
+        <button onClick={()=>setData(p=>({...p,experience:[...p.experience,{title:'',company:'',location:'',start:'',end:'',summary:'',bullets:[]}]}))} style={{border:'1.5px dashed #d4d4d4',background:'none',borderRadius:'6px',padding:'8px',cursor:'pointer',color:'#888',fontSize:'13px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}><IcoPlus/> Add role</button>
+      </Collapsible>
+
+      <Collapsible title="Education">
+        {data.education.map((ed,i)=>(
+          <SubCard key={i} label={`Entry ${i+1}`} onRemove={()=>setData(p=>({...p,education:p.education.filter((_,j)=>j!==i)}))}>
+            <div style={g2}>
+              <input style={fld} placeholder="Degree" value={ed.degree} onChange={e=>updEdu(i,'degree',e.target.value)}/>
+              <input style={fld} placeholder="School" value={ed.school} onChange={e=>updEdu(i,'school',e.target.value)}/>
+              <input style={fld} placeholder="Location" value={ed.location} onChange={e=>updEdu(i,'location',e.target.value)}/>
+              <input style={fld} placeholder="Date" value={ed.date} onChange={e=>updEdu(i,'date',e.target.value)}/>
+              <input style={{...fld,gridColumn:'1/-1'}} placeholder="Honors (optional)" value={ed.honors} onChange={e=>updEdu(i,'honors',e.target.value)}/>
+            </div>
+          </SubCard>
+        ))}
+        <button onClick={()=>setData(p=>({...p,education:[...p.education,{degree:'',school:'',location:'',date:'',honors:''}]}))} style={{border:'1.5px dashed #d4d4d4',background:'none',borderRadius:'6px',padding:'8px',cursor:'pointer',color:'#888',fontSize:'13px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}><IcoPlus/> Add education</button>
+      </Collapsible>
+
+      <Collapsible title="Certifications" open={false}>
+        {data.certifications.map((c,i)=>(
+          <SubCard key={i} label={`Cert ${i+1}`} onRemove={()=>setData(p=>({...p,certifications:p.certifications.filter((_,j)=>j!==i)}))}>
+            <div style={g2}>
+              <input style={{...fld,gridColumn:'1/-1'}} placeholder="Name" value={c.name} onChange={e=>updCert(i,'name',e.target.value)}/>
+              <input style={fld} placeholder="Org" value={c.org} onChange={e=>updCert(i,'org',e.target.value)}/>
+              <input style={fld} placeholder="Date" value={c.date} onChange={e=>updCert(i,'date',e.target.value)}/>
+            </div>
+          </SubCard>
+        ))}
+        <button onClick={()=>setData(p=>({...p,certifications:[...p.certifications,{name:'',org:'',date:''}]}))} style={{border:'1.5px dashed #d4d4d4',background:'none',borderRadius:'6px',padding:'8px',cursor:'pointer',color:'#888',fontSize:'13px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}><IcoPlus/> Add certification</button>
+      </Collapsible>
+
+      <Collapsible title="Awards" open={false}>
+        <ListInput label="Awards & Honors" items={data.awards} onChange={v=>upd('awards',v)} placeholder="An award or honor"/>
+      </Collapsible>
+    </div>
+  );
+}
+
+/* ── EXPORT ── */
+function dlBlob(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{a.parentNode?.removeChild(a);URL.revokeObjectURL(u);},1500);}
+
+function exportPDF(el,data){
+  if(!el)return;
+  const html=el.innerHTML;
+  const doc=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${(data.name||'Resume').replace(/[<>&"']/g,'')}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Playfair+Display:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>@page{size:letter;margin:0}html,body{margin:0;padding:0;background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>
+</head><body>${html}<script>(function(){function g(){try{window.focus();window.print();}catch(e){}}if(document.fonts&&document.fonts.ready){document.fonts.ready.then(()=>setTimeout(g,150));}else{setTimeout(g,700);}})()</script></body></html>`;
+  const w=window.open('','_blank','width=900,height=1100');
+  if(!w){dlBlob(new Blob([doc],{type:'text/html;charset=utf-8'}),((data.name||'resume').replace(/[^a-z0-9]+/gi,'_').toLowerCase())+'.html');alert('Pop-ups blocked — downloaded HTML file instead. Open it and press Ctrl+P to save as PDF.');return;}
+  w.document.open();w.document.write(doc);w.document.close();
+}
+
+function rtfEsc(s){if(s==null)return '';return String(s).replace(/\\/g,'\\\\').replace(/\{/g,'\\{').replace(/\}/g,'\\}').replace(/[\u0080-\uFFFF]/g,c=>`\\u${c.charCodeAt(0)}?`).replace(/\n/g,'\\line ');}
+function h2rgb(hex){const h=(hex||'#000').replace('#','');return{r:parseInt(h.slice(0,2),16),g:parseInt(h.slice(2,4),16),b:parseInt(h.slice(4,6),16)};}
+
+function exportWord(data,template,accent,accent2,name){
+  const fn=(name||'resume').replace(/[^a-z0-9]+/gi,'_').toLowerCase()+'.rtf';
+  const ac=h2rgb(accent);const a2=accent2?h2rgb(accent2):null;
+  let ct=`{\\colortbl;\\red17\\green17\\blue17;\\red60\\green60\\blue60;\\red232\\green232\\blue232;\\red${ac.r}\\green${ac.g}\\blue${ac.b};`;
+  if(a2)ct+=`\\red${a2.r}\\green${a2.g}\\blue${a2.b};`;ct+='}';
+  const serif=template.bodyFont?.includes('Baskerville')||template.bodyFont?.includes('Playfair')||template.bodyFont?.includes('Fraunces');
+  const ft=serif?`{\\fonttbl{\\f0\\froman\\fcharset0 Georgia;}{\\f1\\fswiss\\fcharset0 Arial;}}`:`{\\fonttbl{\\f0\\fswiss\\fcharset0 Arial;}{\\f1\\froman\\fcharset0 Georgia;}}`;
+  const o=[];
+  o.push(`{\\rtf1\\ansi\\ansicpg1252\\deff0\\nouicompat${ft}${ct}\\paperw12240\\paperh15840\\margl1080\\margr1080\\margt1080\\margb1080\\f0\\fs22\\cf1`);
+  if(data.name)o.push(`{\\pard\\ql\\sb0\\sa120\\fs52\\b\\cf1 ${rtfEsc(data.name)}\\par}`);
+  const ci=[data.contact.location,data.contact.phone,data.contact.email,data.contact.linkedin,data.contact.website].filter(Boolean);
+  if(ci.length)o.push(`{\\pard\\ql\\sb0\\sa240\\fs19\\cf2 ${rtfEsc(ci.join('  |  '))}\\par}`);
+  const sh=t=>{o.push(`{\\pard\\ql\\sb240\\sa60\\cf4\\fs19\\b ${rtfEsc(t.toUpperCase())}\\b0\\par}`);o.push(`{\\pard\\ql\\sb0\\sa120\\brdrb\\brdrs\\brdrw10\\brdrcf4\\par}`);};
+  const s=data.summary||{};
+  if(s.tagline||s.bullets?.length||s.skills?.length){sh('Summary');if(s.bullets?.length)s.bullets.forEach(b=>o.push(`{\\pard\\fi-280\\li360\\sa60\\cf1\\fs22 \\u8226? \\tab ${rtfEsc(b)}\\par}`));if(s.tagline)o.push(`{\\pard\\ql\\sa60\\cf1\\fs22\\i ${rtfEsc(s.tagline)}\\i0\\par}`);if(s.skills?.length)o.push(`{\\pard\\ql\\sa120\\cf1\\fs22 ${rtfEsc(s.skills.join('  ·  '))}\\par}`);}
+  if(data.experience?.length){sh('Experience');data.experience.forEach(e=>{const tl=[e.title?`{\\b ${rtfEsc(e.title)}\\b0}`:'',e.company?` \\u8212? ${rtfEsc(e.company)}`:'',e.location?`, ${rtfEsc(e.location)}`:''].join('');const dr=[e.start,e.end].filter(Boolean).join(' \\u8212? ');o.push(`{\\pard\\ql\\sb120\\sa40\\tx9000\\tqr\\tx9000\\cf1\\fs22 ${tl}\\tab ${rtfEsc(dr)}\\par}`);if(e.summary)o.push(`{\\pard\\ql\\sa40\\cf1\\fs22\\i ${rtfEsc(e.summary)}\\i0\\par}`);if(e.bullets?.length)e.bullets.forEach(b=>o.push(`{\\pard\\fi-280\\li360\\sa30\\cf1\\fs22 \\u8226? \\tab ${rtfEsc(b)}\\par}`));o.push(`{\\pard\\sb60\\par}`);});}
+  if(data.education?.length){sh('Education');data.education.forEach(e=>{const l=[e.degree?`{\\b ${rtfEsc(e.degree)}\\b0}`:'',e.school?` \\u8212? ${rtfEsc(e.school)}`:'',e.location?`, ${rtfEsc(e.location)}`:''].join('');o.push(`{\\pard\\ql\\sb80\\sa40\\tx9000\\tqr\\tx9000\\cf1\\fs22 ${l}\\tab ${rtfEsc(e.date||'')}\\par}`);if(e.honors)o.push(`{\\pard\\ql\\sa40\\cf2\\fs21\\i ${rtfEsc(e.honors)}\\i0\\par}`);});}
+  if(data.certifications?.length){sh('Certifications & Licenses');data.certifications.forEach(c=>o.push(`{\\pard\\fi-280\\li360\\sa40\\cf1\\fs22 \\u8226? \\tab {\\b ${rtfEsc(c.name)}\\b0}${c.org?`, ${rtfEsc(c.org)}`:''}${c.date?` (${rtfEsc(c.date)})`:''} \\par}`));}
+  if(data.awards?.length){sh('Awards & Honors');data.awards.forEach(a=>o.push(`{\\pard\\fi-280\\li360\\sa40\\cf1\\fs22 \\u8226? \\tab ${rtfEsc(a)}\\par}`));}
+  o.push('}');
+  dlBlob(new Blob([o.join('\n')],{type:'application/rtf'}),fn);
+}
+
+/* ── MAIN APP ── */
+function App(){
+  const[unlocked,setUnlocked]=useState(false);
+  const[pw,setPw]=useState('');
+  const[pwErr,setPwErr]=useState(false);
+  const[data,setData]=useState(SAMPLE);
+  const[tplId,setTplId]=useState('creative-editorial');
+  const[cat,setCat]=useState('creative');
+  const[overrides,setOverrides]=useState({});
+  const[exporting,setExporting]=useState(null);
+  const[scale,setScale]=useState(0.7);
+  const[previewH,setPreviewH]=useState(1056);
+  const wrapRef=useRef();const previewRef=useRef();const printRef=useRef();
+
+  useEffect(()=>{
+    const fit=()=>{if(!wrapRef.current)return;const w=wrapRef.current.clientWidth;setScale(Math.max(0.3,Math.min(1,(w-32)/(8.5*96))));};
+    fit();window.addEventListener('resize',fit);return()=>window.removeEventListener('resize',fit);
+  },[unlocked]);
+
+  useEffect(()=>{
+    if(!previewRef.current)return;
+    const obs=new ResizeObserver(entries=>{for(const e of entries)setPreviewH(e.contentRect.height+32);});
+    obs.observe(previewRef.current);return()=>obs.disconnect();
+  },[unlocked,tplId,data]);
+
+  const t=TEMPLATES[tplId];
+  const ov=overrides[tplId]||{};
+  const acc=ov.accent||t.accent;
+  const acc2=ov.accent2||t.accent2;
+  const hasOv=!!(ov.accent||ov.accent2);
+  const setAcc=c=>setOverrides(p=>({...p,[tplId]:{...(p[tplId]||{}),accent:c}}));
+  const setAcc2=c=>setOverrides(p=>({...p,[tplId]:{...(p[tplId]||{}),accent2:c}}));
+  const resetAcc=()=>setOverrides(p=>{const n={...p};delete n[tplId];return n;});
+  const pickCat=id=>{setCat(id);const c=CATEGORIES.find(x=>x.id===id);if(c&&!c.variants.includes(tplId))setTplId(c.variants[0]);};
+
+  const handleUnlock=()=>{if(pw==='resumev2'){setUnlocked(true);setPwErr(false);}else{setPwErr(true);setPw('');}};
+
+  /* password gate */
+  if(!unlocked) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#FAF7F0'}}>
+      <div style={{width:'100%',maxWidth:'360px',padding:'0 24px'}}>
+        <div style={{textAlign:'center',marginBottom:'32px'}}>
+          <div style={{width:'48px',height:'48px',borderRadius:'50%',background:'#1c1c1c',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 20px',color:'#fff'}}><IcoLock/></div>
+          <h1 style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'36px',fontStyle:'italic',color:'#1c1c1c',margin:'0 0 8px'}}>Résumé</h1>
+          <p style={{color:'#888',fontSize:'14px',margin:0}}>Enter the password to continue.</p>
+        </div>
+        <div style={{background:'#fff',border:'1px solid rgba(0,0,0,0.12)',borderRadius:'8px',overflow:'hidden',boxShadow:'0 2px 12px rgba(0,0,0,0.06)'}}>
+          <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setPwErr(false);}} onKeyDown={e=>e.key==='Enter'&&handleUnlock()} placeholder="Password" autoFocus
+            style={{width:'100%',padding:'14px 16px',fontSize:'14px',border:'none',borderBottom:`1px solid ${pwErr?'#ffcccc':'#efefef'}`,outline:'none',background:'transparent',boxSizing:'border-box'}}/>
+          <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',background:'#fafafa'}}>
+            {pwErr?<span style={{fontSize:'12px',color:'#cc3333'}}>Incorrect password — try again.</span>:<span/>}
+            <button onClick={handleUnlock} style={{background:'#1c1c1c',color:'#fff',border:'none',padding:'8px 20px',borderRadius:'6px',fontSize:'13px',fontWeight:600,cursor:'pointer'}}>Unlock</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* editor */
+  const headerStyle={background:'rgba(255,255,255,0.85)',backdropFilter:'blur(8px)',borderBottom:'1px solid rgba(0,0,0,0.08)',padding:'0 20px',height:'49px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:30};
+  const btnBase={background:'none',border:'none',cursor:'pointer',fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'5px',padding:'6px 10px',borderRadius:'5px'};
+
+  return (
+    <div style={{minHeight:'100vh',background:'#F0EDE3'}}>
+      {/* header */}
+      <div style={headerStyle}>
+        <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+          <span style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'20px',fontStyle:'italic',color:'#1c1c1c'}}>Résumé</span>
+          <span style={{color:'#ccc'}}>|</span>
+          <span style={{fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.18em',color:'#888'}}>Editor</span>
+        </div>
+        <div style={{display:'flex',gap:'6px'}}>
+          <button style={btnBase} onClick={()=>{setData(SAMPLE);setTplId('creative-editorial');setCat('creative');}}><IcoRefresh/> Load sample</button>
+          <button style={{...btnBase,border:'1px solid #ddd'}} onClick={()=>setData(EMPTY)}><IcoX/> Clear</button>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'minmax(0,420px) minmax(0,1fr)',height:'calc(100vh - 49px)'}}>
+        {/* LEFT panel */}
+        <div style={{background:'#fff',borderRight:'1px solid #efefef',overflowY:'auto',height:'100%'}} className="scroll">
+          <div style={{padding:'20px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}>
+              <span style={{color:'#888'}}><IcoEdit/></span>
+              <span style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'18px',color:'#1c1c1c'}}>Edit</span>
+            </div>
+            <p style={{fontSize:'12px',color:'#aaa',marginBottom:'20px',lineHeight:1.5}}>Fill in your details. The preview updates as you type.</p>
+            <ResumeForm data={data} setData={setData}/>
+          </div>
+        </div>
+
+        {/* RIGHT panel */}
+        <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}}>
+          {/* template picker */}
+          <div style={{background:'#fff',borderBottom:'1px solid #efefef',padding:'0 16px',flexShrink:0}}>
+            {/* category tabs */}
+            <div style={{display:'flex',gap:'2px',overflowX:'auto',paddingTop:'10px',borderBottom:'none'}} className="scroll">
+              {CATEGORIES.map(c=>(
+                <button key={c.id} onClick={()=>pickCat(c.id)} style={{background:'none',border:'none',padding:'8px 12px',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.14em',cursor:'pointer',whiteSpace:'nowrap',borderBottom:`2px solid ${cat===c.id?'#1c1c1c':'transparent'}`,color:cat===c.id?'#1c1c1c':'#888',fontWeight:cat===c.id?600:400}}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            {/* variants */}
+            <div style={{display:'flex',flexWrap:'wrap',gap:'8px',padding:'10px 0 12px'}}>
+              {CATEGORIES.find(c=>c.id===cat).variants.map(id=>{
+                const tpl=TEMPLATES[id];const active=id===tplId;const tAcc=(overrides[id]?.accent)||tpl.accent;
+                return (
+                  <button key={id} onClick={()=>setTplId(id)} style={{textAlign:'left',padding:'8px 12px',borderRadius:'6px',border:active?'2px solid #1c1c1c':'1.5px solid #e0e0e0',background:active?'#1c1c1c':'#fff',cursor:'pointer',minWidth:'120px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                      <span style={{width:'10px',height:'10px',borderRadius:'50%',background:tAcc,flexShrink:0}}/>
+                      <span style={{fontSize:'12px',fontWeight:600,color:active?'#fff':'#1c1c1c'}}>{tpl.label}</span>
+                      {active&&<span style={{color:'#fff',marginLeft:'2px'}}><IcoCheck/></span>}
+                    </div>
+                    <div style={{fontSize:'10px',color:active?'rgba(255,255,255,0.6)':'#aaa',marginTop:'3px',lineHeight:1.3}}>{tpl.blurb}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {/* accent controls */}
+            <div style={{borderTop:'1px solid #f0f0f0',padding:'10px 0',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+              <span style={{fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.2em',color:'#aaa',fontWeight:600}}>Accent</span>
+              <label style={{position:'relative',width:'28px',height:'28px',borderRadius:'50%',overflow:'hidden',border:'1.5px solid #d4d4d4',cursor:'pointer',flexShrink:0}}>
+                <input type="color" value={acc} onChange={e=>setAcc(e.target.value)} style={{position:'absolute',inset:0,width:'100%',height:'100%',opacity:0,cursor:'pointer'}}/>
+                <span style={{position:'absolute',inset:0,background:acc,pointerEvents:'none'}}/>
+              </label>
+              <input type="text" value={acc.toUpperCase()} onChange={e=>{const v=e.target.value.trim();if(/^#?[0-9a-fA-F]{0,6}$/.test(v))setAcc(v.startsWith('#')?v:'#'+v);}}
+                style={{width:'80px',padding:'4px 8px',fontSize:'11px',fontFamily:'monospace',border:'1px solid #d4d4d4',borderRadius:'5px',outline:'none'}}/>
+              <div style={{display:'flex',gap:'4px'}}>
+                {PRESETS.map(p=><button key={p.value} onClick={()=>setAcc(p.value)} title={p.name} style={{width:'18px',height:'18px',borderRadius:'50%',background:p.value,border:acc.toLowerCase()===p.value.toLowerCase()?'2px solid #1c1c1c':'1px solid #ddd',cursor:'pointer',padding:0,flexShrink:0}}/>)}
+              </div>
+              {t.accent2&&<>
+                <span style={{fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.2em',color:'#aaa',fontWeight:600}}>2nd</span>
+                <label style={{position:'relative',width:'28px',height:'28px',borderRadius:'50%',overflow:'hidden',border:'1.5px solid #d4d4d4',cursor:'pointer'}}>
+                  <input type="color" value={acc2||'#E05C20'} onChange={e=>setAcc2(e.target.value)} style={{position:'absolute',inset:0,width:'100%',height:'100%',opacity:0,cursor:'pointer'}}/>
+                  <span style={{position:'absolute',inset:0,background:acc2||'#E05C20',pointerEvents:'none'}}/>
+                </label>
+              </>}
+              {hasOv&&<button onClick={resetAcc} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#aaa',textDecoration:'underline',marginLeft:'auto'}}>Reset</button>}
+            </div>
+          </div>
+
+          {/* preview area */}
+          <div ref={wrapRef} style={{flex:1,overflow:'auto',padding:'24px',display:'flex',alignItems:'flex-start',justifyContent:'center',background:'#E8E4D8'}} className="scroll">
+            <div style={{width:`${8.5*scale}in`,height:`${previewH*scale}px`,flexShrink:0}}>
+              <div style={{transform:`scale(${scale})`,transformOrigin:'top left',width:'8.5in'}}>
+                <TemplatePreview templateId={tplId} data={data} accent={acc} accent2={acc2} innerRef={previewRef}/>
+              </div>
+            </div>
+          </div>
+
+          {/* export bar */}
+          <div style={{borderTop:'1px solid #e8e8e8',background:'#fff',padding:'12px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+            <div>
+              <div style={{fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.18em',color:'#aaa'}}>Currently</div>
+              <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontSize:'16px',color:'#1c1c1c'}}>{t.label}</div>
+            </div>
+            <div style={{display:'flex',gap:'8px'}}>
+              <button disabled={exporting!==null} onClick={()=>{setExporting('word');try{exportWord(data,t,acc,acc2,data.name);}finally{setTimeout(()=>setExporting(null),400);}}}
+                style={{display:'flex',alignItems:'center',gap:'6px',padding:'10px 16px',border:'1.5px solid #1c1c1c',background:'#fff',color:'#1c1c1c',borderRadius:'6px',fontSize:'13px',fontWeight:600,cursor:'pointer',opacity:exporting?0.5:1}}>
+                {exporting==='word'?<IcoLoader/>:<IcoFile/>} Word
+              </button>
+              <button disabled={exporting!==null} onClick={()=>{setExporting('pdf');try{exportPDF(printRef.current,data);}finally{setTimeout(()=>setExporting(null),500);}}}
+                style={{display:'flex',alignItems:'center',gap:'6px',padding:'10px 16px',border:'none',background:'#1c1c1c',color:'#fff',borderRadius:'6px',fontSize:'13px',fontWeight:600,cursor:'pointer',opacity:exporting?0.5:1}}>
+                {exporting==='pdf'?<IcoLoader/>:<IcoDownload/>} PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* off-screen print target */}
+      <div ref={printRef} className="pdf-area" aria-hidden="true">
+        <TemplatePreview templateId={tplId} data={data} accent={acc} accent2={acc2}/>
+      </div>
+    </div>
+  );
+}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
