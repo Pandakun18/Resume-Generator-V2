@@ -1969,7 +1969,7 @@ function exportToWord(data, template, accent, accent2, name) {
 
 const TOOL_FONTS_CSS = null;
 
-
+export default function ResumeGenerator() {
   const [unlocked, setUnlocked] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
@@ -2200,4 +2200,4 @@ const TOOL_FONTS_CSS = null;
   );
 }
 
-export default ResumeGenerator;
+
