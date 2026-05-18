@@ -2208,3 +2208,4 @@ export default function ResumeGenerator() {
     </div>
   );
 }
+export default ResumeGenerator;
